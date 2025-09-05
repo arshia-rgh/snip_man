@@ -57,11 +57,11 @@ jobs:
         run: |
           cd target/${{ matrix.target }}/release
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            mv snip_man.exe snip_man-${{ matrix.target }}.exe
-            7z a ../../../snip_man-${{ matrix.target }}.zip snip_man-${{ matrix.target }}.exe
+            mv snipman.exe snipman-${{ matrix.target }}.exe
+            7z a ../../../snipman-${{ matrix.target }}.zip snipman-${{ matrix.target }}.exe
           else
-            mv snip_man snip_man-${{ matrix.target }}
-            tar czvf ../../../snip_man-${{ matrix.target }}.tar.gz snip_man-${{ matrix.target }}
+            mv snipman snipman-${{ matrix.target }}
+            tar czvf ../../../snipman-${{ matrix.target }}.tar.gz snipman-${{ matrix.target }}
           fi
       - name: Upload release asset
         uses: actions/upload-release-asset@v1
@@ -69,6 +69,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./snip_man-${{ matrix.target }}.${{ matrix.os == 'windows-latest' && 'zip' || 'tar.gz' }}
-          asset_name: snip_man-${{ matrix.target }}.${{ matrix.os == 'windows-latest' && 'zip' || 'tar.gz' }}
+          asset_path: ./snipman-${{ matrix.target }}.${{ matrix.os == 'windows-latest' && 'zip' || 'tar.gz' }}
+          asset_name: snipman-${{ matrix.target }}.${{ matrix.os == 'windows-latest' && 'zip' || 'tar.gz' }}
           asset_content_type: application/octet-stream
