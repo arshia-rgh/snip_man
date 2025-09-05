@@ -1,32 +1,46 @@
+//! snipman CLI entry point.
+//!
+//! Commands:
+//! - add: create a new snippet with description, tags, and code
+//! - list: print all saved snippets
+//! - search: open the interactive TUI to fuzzy-search and copy a snippet
+
 mod snippets;
 mod tui;
+mod os;
 
 use crate::snippets::{Snippet, load_snippets, save_snippet};
 use clap::{Parser, Subcommand};
 
+/// Command-line interface for Snipman.
 #[derive(Parser)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about = "Fast TUI snippet manager", long_about = None)]
 struct Cli {
+    /// Subcommand to execute
     #[command(subcommand)]
     command: Commands,
 }
 
+/// Available subcommands.
 #[derive(Subcommand)]
 enum Commands {
     /// Add a new snippet
     Add {
+        /// A short, searchable description
         #[arg(short, long)]
         description: String,
 
+        /// Comma-separated tags, e.g. "fs,io,read"
         #[arg(short, long, value_delimiter = ',')]
         tags: Vec<String>,
 
+        /// The snippet body/code
         #[arg(short, long)]
         code: String,
     },
     /// List all snippets
     List,
-    /// search snippets with a TUI
+    /// Search snippets with an interactive TUI; copies selection to clipboard
     Search,
 }
 

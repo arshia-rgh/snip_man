@@ -1,3 +1,11 @@
+//! Terminal user interface (TUI) for interactive snippet search and copy.
+//!
+//! Key bindings:
+//! - Type to filter by description (fuzzy)
+//! - Up/Down to navigate
+//! - Enter to copy selected snippet to clipboard and exit
+//! - q to quit without copying
+
 use crate::Snippet;
 use arboard::Clipboard;
 use crossterm::{
@@ -16,6 +24,7 @@ use ratatui::{
 };
 use std::io;
 
+/// In-memory state for the interactive app.
 struct App {
     all_snippets: Vec<Snippet>,
     visible_snippets: Vec<Snippet>,
@@ -40,18 +49,32 @@ impl App {
         if self.search_query.is_empty() {
             self.visible_snippets = self.all_snippets.clone();
         } else {
-            self.visible_snippets = self
+            let query = self.search_query.clone();
+            let matcher = &self.matcher;
+
+            let mut scored: Vec<(Snippet, i64)> = self
                 .all_snippets
                 .iter()
                 .filter_map(|snippet| {
-                    self.matcher
-                        .fuzzy_match(&snippet.description, &self.search_query)
-                        .map(|score| (snippet.clone(), score))
+                    let mut best: Option<i64> = None;
+
+                    if let Some(s) = matcher.fuzzy_match(&snippet.description, &query) {
+                        best = Some(s);
+                    }
+                    if let Some(s) = matcher.fuzzy_match(&snippet.tags.join(" "), &query) {
+                        best = Some(best.map_or(s, |b| b.max(s)));
+                    }
+                    if let Some(s) = matcher.fuzzy_match(&snippet.code, &query) {
+                        best = Some(best.map_or(s, |b| b.max(s)));
+                    }
+
+                    best.map(|score| (snippet.clone(), score))
                 })
-                .collect::<Vec<(Snippet, i64)>>()
-                .into_iter()
-                .map(|(snippet, _)| snippet)
                 .collect();
+
+            scored.sort_by(|a, b| b.1.cmp(&a.1));
+
+            self.visible_snippets = scored.into_iter().map(|(snip, _)| snip).collect();
         }
         if !self.visible_snippets.is_empty() {
             self.list_state.select(Some(0));
@@ -93,6 +116,8 @@ impl App {
     }
 }
 
+/// Run the TUI and return the selected snippet's code if Enter is pressed.
+/// Returns Ok(None) if the user quits without selecting.
 pub fn run_tui(all_snippets: Vec<Snippet>) -> io::Result<Option<String>> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
