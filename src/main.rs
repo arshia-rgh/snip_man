@@ -46,8 +46,8 @@ enum Commands {
         #[arg(short, long)]
         description: String,
     },
-    /// Search snippets with an interactive TUI; copies selection to clipboard
-    Search,
+    /// Enter the interactive TUI to search, copy and remove snippets
+    Interactive,
 }
 
 fn main() {
@@ -77,24 +77,22 @@ fn main() {
             }
             Err(e) => eprintln!("Error loading snippets: {}", e),
         },
-        Commands::Remove { description } => {
-            match load_snippets() {
-                Ok(snippets) => {
-                    let snippet_opt = snippets.iter().find(|s| s.description == *description);
-                    if let Some(snippet) = snippet_opt {
-                        if let Err(e) = snippets::delete_snippet(&snippet.id) {
-                            eprintln!("Error deleting snippet: {}", e);
-                        } else {
-                            println!("Snippet '{}' deleted successfully.", description);
-                        }
+        Commands::Remove { description } => match load_snippets() {
+            Ok(snippets) => {
+                let snippet_opt = snippets.iter().find(|s| s.description == *description);
+                if let Some(snippet) = snippet_opt {
+                    if let Err(e) = snippets::delete_snippet(&snippet.id) {
+                        eprintln!("Error deleting snippet: {}", e);
                     } else {
-                        println!("No snippet found with description '{}'.", description);
+                        println!("Snippet '{}' deleted successfully.", description);
                     }
+                } else {
+                    println!("No snippet found with description '{}'.", description);
                 }
-                Err(e) => eprintln!("Error loading snippets: {}", e),
             }
-        }
-        Commands::Search => {
+            Err(e) => eprintln!("Error loading snippets: {}", e),
+        },
+        Commands::Interactive => {
             let all_snippets = match load_snippets() {
                 Ok(snippets) => snippets,
                 Err(e) => {

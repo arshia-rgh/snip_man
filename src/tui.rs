@@ -5,8 +5,11 @@
 //! - Up/Down to navigate
 //! - Enter to copy selected snippet to clipboard and exit
 //! - q to quit without copying
+//! - p: preview selected snippet code
+//! - d: delete selected snippet
+//! - PgUp/PgDn: scroll preview up/down
 
-use crate::Snippet;
+use crate::snippets::{Snippet, delete_snippet};
 use arboard::Clipboard;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode},
@@ -20,9 +23,14 @@ use ratatui::{
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 use std::io;
+
+enum Mode {
+    Normal,
+    ConfirmDelete,
+}
 
 /// In-memory state for the interactive app.
 struct App {
@@ -31,6 +39,10 @@ struct App {
     list_state: ListState,
     search_query: String,
     matcher: SkimMatcherV2,
+    mode: Mode,
+    preview_full: bool,
+    preview_scroll: u16,
+    status_msg: Option<String>,
 }
 
 impl App {
@@ -42,6 +54,10 @@ impl App {
             list_state: ListState::default(),
             search_query: String::new(),
             matcher: SkimMatcherV2::default(),
+            mode: Mode::Normal,
+            preview_full: false,
+            preview_scroll: 0,
+            status_msg: None,
         }
     }
 
@@ -73,17 +89,18 @@ impl App {
                 .collect();
 
             scored.sort_by(|a, b| b.1.cmp(&a.1));
-
             self.visible_snippets = scored.into_iter().map(|(snip, _)| snip).collect();
         }
+
         if !self.visible_snippets.is_empty() {
             self.list_state.select(Some(0));
         } else {
             self.list_state.select(None);
         }
+        self.preview_scroll = 0;
     }
 
-    pub fn next(&mut self) {
+    fn next(&mut self) {
         let i = match self.list_state.selected() {
             Some(i) => {
                 if self.visible_snippets.is_empty() {
@@ -97,9 +114,10 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
+        self.preview_scroll = 0;
     }
 
-    pub fn previous(&mut self) {
+    fn previous(&mut self) {
         let i = match self.list_state.selected() {
             Some(i) => {
                 if self.visible_snippets.is_empty() {
@@ -113,6 +131,13 @@ impl App {
             None => 0,
         };
         self.list_state.select(Some(i));
+        self.preview_scroll = 0;
+    }
+
+    fn selected_snippet(&self) -> Option<&Snippet> {
+        self.list_state
+            .selected()
+            .and_then(|i| self.visible_snippets.get(i))
     }
 }
 
@@ -134,29 +159,80 @@ pub fn run_tui(all_snippets: Vec<Snippet>) -> io::Result<Option<String>> {
         terminal.draw(|f| ui(f, &mut app))?;
 
         if let Event::Key(key) = event::read()? {
-            match key.code {
-                KeyCode::Char('q') => {
-                    break;
-                }
-                KeyCode::Enter => {
-                    if let Some(selected_index) = app.list_state.selected() {
-                        if let Some(selected_snippet) = app.visible_snippets.get(selected_index) {
-                            selected_code = Some(selected_snippet.code.clone());
-                            break;
+            match app.mode {
+                Mode::ConfirmDelete => match key.code {
+                    KeyCode::Char('y') => {
+                        if let Some(sel) = app.list_state.selected() {
+                            if let Some(sn) = app.visible_snippets.get(sel).cloned() {
+                                match delete_snippet(&sn.id) {
+                                    Ok(_) => {
+                                        app.all_snippets.retain(|s| s.id != sn.id);
+                                        app.visible_snippets.retain(|s| s.id != sn.id);
+
+                                        if app.visible_snippets.is_empty() {
+                                            app.list_state.select(None);
+                                        } else {
+                                            let new_sel = sel.min(app.visible_snippets.len() - 1);
+                                            app.list_state.select(Some(new_sel));
+                                        }
+                                        app.status_msg = Some("Deleted snippet.".to_string());
+                                    }
+                                    Err(e) => {
+                                        app.status_msg = Some(format!("Delete failed: {}", e));
+                                    }
+                                }
+                            }
+                        }
+                        app.mode = Mode::Normal;
+                    }
+                    KeyCode::Char('n') | KeyCode::Esc => {
+                        app.mode = Mode::Normal;
+                        app.status_msg = Some("Canceled delete.".to_string());
+                    }
+                    _ => {}
+                },
+                Mode::Normal => match key.code {
+                    KeyCode::Char('q') => break,
+                    KeyCode::Enter => {
+                        if let Some(selected_index) = app.list_state.selected() {
+                            if let Some(selected_snippet) = app.visible_snippets.get(selected_index)
+                            {
+                                selected_code = Some(selected_snippet.code.clone());
+                                break;
+                            }
                         }
                     }
-                }
-                KeyCode::Down => app.next(),
-                KeyCode::Up => app.previous(),
-                KeyCode::Char(c) => {
-                    app.search_query.push(c);
-                    app.filter_snippets();
-                }
-                KeyCode::Backspace => {
-                    app.search_query.pop();
-                    app.filter_snippets();
-                }
-                _ => {}
+                    KeyCode::Down => app.next(),
+                    KeyCode::Up => app.previous(),
+                    KeyCode::PageDown => {
+                        let max_lines = app
+                            .selected_snippet()
+                            .map(|s| s.code.lines().count())
+                            .unwrap_or(0);
+                        let max_scroll = max_lines.saturating_sub(1) as u16;
+                        app.preview_scroll = (app.preview_scroll.saturating_add(5)).min(max_scroll);
+                    }
+                    KeyCode::PageUp => {
+                        app.preview_scroll = app.preview_scroll.saturating_sub(5);
+                    }
+                    KeyCode::Char('p') => {
+                        app.preview_full = !app.preview_full;
+                        app.preview_scroll = 0;
+                    }
+                    KeyCode::Char('d') => {
+                        app.mode = Mode::ConfirmDelete;
+                        app.status_msg = Some("Confirm delete? press 'y' or 'n'".to_string());
+                    }
+                    KeyCode::Backspace => {
+                        app.search_query.pop();
+                        app.filter_snippets();
+                    }
+                    KeyCode::Char(c) => {
+                        app.search_query.push(c);
+                        app.filter_snippets();
+                    }
+                    _ => {}
+                },
             }
         }
     }
@@ -187,9 +263,23 @@ fn ui(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Length(3), Constraint::Min(0)].as_ref())
         .split(f.area());
 
+    let mut title = "Search".to_string();
+    match app.mode {
+        Mode::ConfirmDelete => title.push_str(" [confirm delete: y/n]"),
+        Mode::Normal => {}
+    }
+    if let Some(msg) = &app.status_msg {
+        title.push_str(" • ");
+        title.push_str(msg);
+    }
     let search_bar = Paragraph::new(app.search_query.as_str())
-        .block(Block::default().borders(Borders::ALL).title("Search"));
+        .block(Block::default().borders(Borders::ALL).title(title));
     f.render_widget(search_bar, chunks[0]);
+
+    let main_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(55), Constraint::Percentage(45)].as_ref())
+        .split(chunks[1]);
 
     let items: Vec<ListItem> = app
         .visible_snippets
@@ -198,7 +288,11 @@ fn ui(f: &mut Frame, app: &mut App) {
         .collect();
 
     let snippets_list = List::new(items)
-        .block(Block::default().borders(Borders::ALL).title("Snippets"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Snippets (Enter copy, d delete, p preview, PgUp/PgDn scroll, q quit)"),
+        )
         .highlight_style(
             Style::default()
                 .bg(Color::Rgb(0, 150, 150))
@@ -206,5 +300,39 @@ fn ui(f: &mut Frame, app: &mut App) {
         )
         .highlight_symbol(">> ");
 
-    f.render_stateful_widget(snippets_list, chunks[1], &mut app.list_state);
+    f.render_stateful_widget(snippets_list, main_chunks[0], &mut app.list_state);
+
+    let preview_text = if let Some(s) = app.selected_snippet() {
+        if app.preview_full {
+            s.code.clone()
+        } else {
+            let mut lines: Vec<&str> = s.code.lines().collect();
+            let truncated = if lines.len() > 10 {
+                lines.truncate(10);
+                let mut t = lines.join("\n");
+                t.push_str("\n…");
+                t
+            } else {
+                lines.join("\n")
+            };
+            truncated
+        }
+    } else {
+        String::from("No snippet selected.")
+    };
+
+    let preview = Paragraph::new(preview_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(if app.preview_full {
+                    "Preview (full)"
+                } else {
+                    "Preview (compact)"
+                }),
+        )
+        .wrap(Wrap { trim: false })
+        .scroll((app.preview_scroll, 0));
+
+    f.render_widget(preview, main_chunks[1]);
 }

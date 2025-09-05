@@ -1,6 +1,7 @@
 # SnipMan ✂️ - A Blazing Fast TUI Snippet Manager
 
-SnipMan is a simple, fast, and intuitive command-line snippet manager built with Rust. It allows you to save, search, and manage your code snippets directly from your terminal, keeping you in the flow.
+SnipMan is a simple, fast, and intuitive command-line snippet manager built with Rust. It allows you to save, search,
+and manage your code snippets directly from your terminal, keeping you in the flow.
 
 ## Features
 
@@ -77,9 +78,17 @@ Print all snippets.
 snipman list
 ```
 
-### Search (interactive)
+### Remove
 
-Open the interactive picker with fuzzy search on descriptions.
+Remove a snippet by its Description (from `list` command).
+
+```bash
+snipman remove <description>
+```
+
+### Interactive Mode
+
+Open the interactive picker with fuzzy search, preview and delete.
 
 ```bash
 snipman search
@@ -91,6 +100,9 @@ Key bindings:
 - Up/Down: move selection
 - Enter: copy selected snippet code to clipboard and exit
 - q: quit without copying
+- p: preview selected snippet code
+- d: delete selected snippet
+- PgUp/PgDn: scroll preview up/down
 - Backspace: delete last character in query
 
 ## Data model
