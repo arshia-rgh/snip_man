@@ -3,6 +3,11 @@ license = "MIT"
 name = "snip_man"
 version = "0.1.0"
 edition = "2024"
+authors = ["Arshia <arshiarezagholi1212@gmail.com>"]
+description = "A fast and simple TUI-based code snippet manager."
+homepage = "https://github.com/arshia-rgh/snip_man"
+repository = "https://github.com/arshia-rgh/snip_man"
+readme = "README.md"
 
 [dependencies]
 arboard = "3.6.1"
