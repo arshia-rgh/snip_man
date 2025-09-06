@@ -104,3 +104,12 @@ pub fn load_snippets() -> std::io::Result<Vec<Snippet>> {
 
     Ok(snippets)
 }
+
+/// Delete a snippet file by its `id`.
+pub fn delete_snippet(id: &str) -> std::io::Result<()> {
+    let path = get_snippets_dir().join(format!("{}.json", id));
+    if path.exists() {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
