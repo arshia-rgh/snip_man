@@ -35,7 +35,7 @@ enum Mode {
 /// In-memory state for the interactive app.
 struct App {
     all_snippets: Vec<Snippet>,
-    visible_snippets: Vec<Snippet>,
+    visible_snippets: Vec<usize>,
     list_state: ListState,
     search_query: String,
     matcher: SkimMatcherV2,
@@ -47,10 +47,10 @@ struct App {
 
 impl App {
     fn new(snippets: Vec<Snippet>) -> App {
-        let visible_snippets = snippets.clone();
+        let visible_indices = (0..snippets.len()).collect();
         App {
             all_snippets: snippets,
-            visible_snippets,
+            visible_snippets: visible_indices,
             list_state: ListState::default(),
             search_query: String::new(),
             matcher: SkimMatcherV2::default(),
@@ -63,33 +63,34 @@ impl App {
 
     fn filter_snippets(&mut self) {
         if self.search_query.is_empty() {
-            self.visible_snippets = self.all_snippets.clone();
+            self.visible_snippets = (0..self.all_snippets.len()).collect();
         } else {
-            let query = self.search_query.clone();
+            let query = self.search_query.as_str();
             let matcher = &self.matcher;
 
-            let mut scored: Vec<(Snippet, i64)> = self
+            let mut scored: Vec<(usize, i64)> = self
                 .all_snippets
                 .iter()
-                .filter_map(|snippet| {
+                .enumerate()
+                .filter_map(|(idx, snippet)| {
                     let mut best: Option<i64> = None;
 
-                    if let Some(s) = matcher.fuzzy_match(&snippet.description, &query) {
+                    if let Some(s) = matcher.fuzzy_match(&snippet.description, query) {
                         best = Some(s);
                     }
-                    if let Some(s) = matcher.fuzzy_match(&snippet.tags.join(" "), &query) {
+                    if let Some(s) = matcher.fuzzy_match(&snippet.tags.join(" "), query) {
                         best = Some(best.map_or(s, |b| b.max(s)));
                     }
-                    if let Some(s) = matcher.fuzzy_match(&snippet.code, &query) {
+                    if let Some(s) = matcher.fuzzy_match(&snippet.code, query) {
                         best = Some(best.map_or(s, |b| b.max(s)));
                     }
 
-                    best.map(|score| (snippet.clone(), score))
+                    best.map(|score| (idx, score))
                 })
                 .collect();
 
             scored.sort_by(|a, b| b.1.cmp(&a.1));
-            self.visible_snippets = scored.into_iter().map(|(snip, _)| snip).collect();
+            self.visible_snippets = scored.into_iter().map(|(idx, _)| idx).collect();
         }
 
         if !self.visible_snippets.is_empty() {
@@ -138,6 +139,7 @@ impl App {
         self.list_state
             .selected()
             .and_then(|i| self.visible_snippets.get(i))
+            .and_then(|&idx| self.all_snippets.get(idx))
     }
 }
 
@@ -153,7 +155,7 @@ pub fn run_tui(all_snippets: Vec<Snippet>) -> io::Result<Option<String>> {
     let mut app = App::new(all_snippets);
     app.list_state.select(Some(0));
 
-    let mut selected_code: Option<String> = None;
+    let mut selected_code: Option<&str> = None;
 
     loop {
         terminal.draw(|f| ui(f, &mut app))?;
@@ -163,11 +165,12 @@ pub fn run_tui(all_snippets: Vec<Snippet>) -> io::Result<Option<String>> {
                 Mode::ConfirmDelete => match key.code {
                     KeyCode::Char('y') => {
                         if let Some(sel) = app.list_state.selected() {
-                            if let Some(sn) = app.visible_snippets.get(sel).cloned() {
-                                match delete_snippet(&sn.id) {
+                            if let Some(&idx) = app.visible_snippets.get(sel) {
+                                let id = app.all_snippets[idx].id.clone();
+                                match delete_snippet(&id) {
                                     Ok(_) => {
-                                        app.all_snippets.retain(|s| s.id != sn.id);
-                                        app.visible_snippets.retain(|s| s.id != sn.id);
+                                        app.all_snippets.retain(|s| s.id != id);
+                                        app.filter_snippets();
 
                                         if app.visible_snippets.is_empty() {
                                             app.list_state.select(None);
@@ -195,9 +198,11 @@ pub fn run_tui(all_snippets: Vec<Snippet>) -> io::Result<Option<String>> {
                     KeyCode::Char('q') => break,
                     KeyCode::Enter => {
                         if let Some(selected_index) = app.list_state.selected() {
-                            if let Some(selected_snippet) = app.visible_snippets.get(selected_index)
+                            if let Some(&selected_snippet) =
+                                app.visible_snippets.get(selected_index)
                             {
-                                selected_code = Some(selected_snippet.code.clone());
+                                selected_code =
+                                    Some(app.all_snippets[selected_snippet].code.as_str());
                                 break;
                             }
                         }
@@ -248,9 +253,9 @@ pub fn run_tui(all_snippets: Vec<Snippet>) -> io::Result<Option<String>> {
     if let Some(code_to_copy) = selected_code {
         let mut clipboard = Clipboard::new().expect("Failed to initialize clipboard");
         clipboard
-            .set_text(code_to_copy.clone())
+            .set_text(code_to_copy)
             .expect("Failed to copy text to clipboard");
-        return Ok(Some(code_to_copy));
+        return Ok(Some(code_to_copy.to_string()));
     }
 
     Ok(None)
@@ -284,7 +289,7 @@ fn ui(f: &mut Frame, app: &mut App) {
     let items: Vec<ListItem> = app
         .visible_snippets
         .iter()
-        .map(|s| ListItem::new(s.description.as_str()))
+        .map(|&i| ListItem::new(app.all_snippets[i].description.as_str()))
         .collect();
 
     let snippets_list = List::new(items)
