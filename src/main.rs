@@ -13,7 +13,7 @@ use crate::os::OsKind;
 use crate::snippets::{Snippet, load_snippets, save_snippet};
 use clap::{Parser, Subcommand};
 use std::io::Read;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::{env, fs, io};
 
@@ -70,7 +70,7 @@ enum Commands {
 fn main() {
     let cli = Cli::parse();
 
-    match &cli.command {
+    match cli.command {
         Commands::Add {
             description,
             tags,
@@ -79,7 +79,7 @@ fn main() {
             stdin,
             editor,
         } => {
-            let code_body = match resolve_code_input(code, file.as_deref(), *stdin, *editor) {
+            let code_body = match resolve_code_input(code, file, stdin, editor) {
                 Ok(s) => s,
                 Err(e) => {
                     eprintln!(
@@ -90,7 +90,7 @@ fn main() {
                 }
             };
 
-            let new_snippet = Snippet::new(description.clone(), tags.clone(), code_body);
+            let new_snippet = Snippet::new(description, tags, code_body);
             if let Err(e) = save_snippet(&new_snippet) {
                 eprintln!("Error saving snippet: {}", e);
             }
@@ -110,7 +110,7 @@ fn main() {
         },
         Commands::Remove { description } => match load_snippets() {
             Ok(snippets) => {
-                let snippet_opt = snippets.iter().find(|s| s.description == *description);
+                let snippet_opt = snippets.iter().find(|s| s.description == description);
                 if let Some(snippet) = snippet_opt {
                     if let Err(e) = snippets::delete_snippet(&snippet.id) {
                         eprintln!("Error deleting snippet: {}", e);
@@ -158,13 +158,13 @@ fn main() {
 /// # Errors
 /// Returns an error if no valid code source is provided, or if file/stdin/editor operations fail.
 fn resolve_code_input(
-    inline: &Option<String>,
-    file: Option<&Path>,
+    inline: Option<String>,
+    file: Option<PathBuf>,
     from_stdin: bool,
     editor: bool,
 ) -> io::Result<String> {
     if let Some(s) = inline {
-        return Ok(s.clone());
+        return Ok(s);
     }
     if let Some(path) = file {
         return fs::read_to_string(path);
