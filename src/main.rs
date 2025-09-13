@@ -5,11 +5,14 @@
 //! - list: print all saved snippets
 //! - interactive: open the interactive TUI to fuzzy-search and copy a snippet
 
+mod init;
 mod os;
+mod shell;
 mod snippets;
 mod tui;
 
 use crate::os::OsKind;
+use crate::shell::ShellTarget;
 use crate::snippets::{Snippet, load_snippets, save_snippet};
 use clap::{Parser, Subcommand};
 use std::io::Read;
@@ -65,10 +68,28 @@ enum Commands {
     },
     /// Enter the interactive TUI to search, copy and remove snippets
     Interactive,
+
+    /// Install man page and shell completions into user directories and mark as installed
+    Install {
+        /// Which shell to target (auto detects current shell)
+        #[arg(value_enum, default_value_t = ShellTarget::Auto)]
+        shell: ShellTarget,
+        /// Do not modify shell rc files (e.g., zsh fpath)
+        #[arg(long)]
+        no_modify_rc: bool,
+    },
 }
 
 fn main() {
     let cli = Cli::parse();
+
+    if requires_install_gate(&cli.command) && !init::state::is_installed() {
+        eprintln!(
+            "snipman is not initialized. Run: snipman install\n\
+             After that, open a new shell to use completions. `man snipman` will also be available."
+        );
+        std::process::exit(2);
+    }
 
     match cli.command {
         Commands::Add {
@@ -144,6 +165,24 @@ fn main() {
                 }
             }
         }
+        Commands::Install {
+            shell,
+            no_modify_rc,
+        } => {
+            if let Err(e) = init::install_user_assets(shell, no_modify_rc) {
+                eprintln!("Install failed: {}", e);
+                std::process::exit(1);
+            } else {
+                println!("Install completed. Open a new shell. Try: man snipman");
+            }
+        }
+    }
+}
+
+fn requires_install_gate(cmd: &Commands) -> bool {
+    match cmd {
+        Commands::Install { .. } => false,
+        _ => true,
     }
 }
 
