@@ -37,7 +37,43 @@ Pick one of the following:
         1) Download: https://github.com/arshia-rgh/snipman/releases/latest/download/snipman-x86_64-pc-windows-msvc.zip
         2) Extract, rename the file to `snipman.exe`, and place it in a folder on your PATH (e.g., `%USERPROFILE%\bin`).
 
+## Initialize (one-time)
+
+Before using other commands, run the installer to set up manual pages and shell completions. Other commands are gated until this completes.
+
+```bash
+snipman install
+```
+
+Notes:
+- After install, open a new shell so completions and man pages are picked up.
+- Try: `man snipman`
+- The installer writes a per-user stamp to mark completion; without it, running other commands prints a helpful message to run `snipman install`.
+
+Options:
+- Choose target shell(s):
+  ```bash
+  snipman install --shell auto     # default; detect $SHELL, else install for bash,zsh,fish
+  snipman install --shell bash
+  snipman install --shell zsh
+  snipman install --shell fish
+  snipman install --shell all
+  ```
+- Avoid modifying your shell rc (Zsh):
+  ```bash
+  snipman install --no-modify-rc
+  ```
+  By default on Zsh, SnipMan appends a small idempotent block to your ~/.zshrc (or $ZDOTDIR/.zshrc) to add the completion path and run `compinit`.
+
+Where things go (Unix):
+- Man page: `~/.local/share/man/man1/snipman.1` (then `mandb -q` is attempted quietly)
+- Bash completion: `~/.local/share/bash-completion/completions/snipman`
+- Zsh completion: `~/.local/share/zsh/site-functions/_snipman` (name decided by clap_complete)
+- Fish completion: `~/.config/fish/completions/snipman.fish`
+
 ## Usage
+
+Note: ensure you ran `snipman install` first (see above).
 
 Show help:
 
