@@ -214,16 +214,29 @@ pub fn install_user_assets(target: ShellTarget, no_modify_rc: bool) -> io::Resul
     }
 
     if !no_modify_rc {
-        if let Some(ShellTarget::Zsh) = ShellTarget::detect() {
-            let zshrc = env::var_os("ZDOTDIR")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| dirs.home.clone())
-                .join(".zshrc");
-            let block = format!(
-                "fpath+=({})\nautoload -Uz compinit\ncompinit -u",
-                dirs.zsh.to_string_lossy()
-            );
-            let _ = ensure_block_in_file(&zshrc, "SNIPMAN_ZSH_FPATH", &block);
+        match crate::shell::ShellTarget::detect() {
+            Some(ShellTarget::Zsh) => {
+                // Zsh: ensure fpath and MANPATH
+                let zshrc = env::var_os("ZDOTDIR")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| dirs.home.clone())
+                    .join(".zshrc");
+                let fpath_block = format!(
+                    "fpath+=({})\nautoload -Uz compinit\ncompinit -u",
+                    dirs.zsh.to_string_lossy()
+                );
+                let _ = ensure_block_in_file(&zshrc, "SNIPMAN_ZSH_FPATH", &fpath_block);
+
+                let man_block = r#"export MANPATH="$HOME/.local/share/man:$MANPATH""#;
+                let _ = ensure_block_in_file(&zshrc, "SNIPMAN_MANPATH", man_block);
+            }
+            Some(ShellTarget::Bash) => {
+                // Bash: ensure MANPATH
+                let bashrc = dirs.home.join(".bashrc");
+                let man_block = r#"export MANPATH="$HOME/.local/share/man:$MANPATH""#;
+                let _ = ensure_block_in_file(&bashrc, "SNIPMAN_MANPATH", man_block);
+            }
+            _ => {}
         }
     }
 

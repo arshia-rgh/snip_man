@@ -13,7 +13,7 @@ mod tui;
 
 use crate::os::OsKind;
 use crate::shell::ShellTarget;
-use crate::snippets::{Snippet, load_snippets, save_snippet};
+use crate::snippets::{load_snippets, save_snippet, Snippet};
 use clap::{Parser, Subcommand};
 use std::io::Read;
 use std::path::PathBuf;
